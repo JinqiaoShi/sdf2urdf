@@ -28,7 +28,11 @@ def convert_geometry(parent, builder)
       sdf_geom.element_children.each do |sdf_prim|
         attrs = {}
         sdf_prim.element_children.each do |param|
-          attrs[param.name] = param.text
+          name = param.name
+          if sdf_prim.name == "mesh" and param.name == "uri"
+            name = "filename"
+          end
+          attrs[name] = param.text
         end
         
         builder.send(sdf_prim.name, attrs)
@@ -98,14 +102,14 @@ def convert_joints(parent, out)
     else
       out.joint(:name => sdf_joint[:name], :type => sdf_joint[:type]) {
         convert_pose(sdf_joint, out)
-
+        
         flatten_tag(out, sdf_joint, "child", "child" => :link)
         flatten_tag(out, sdf_joint, "parent", "parent" => :link)
         flatten_tag(out, sdf_joint, "axis", "xyz" => :xyz)
         flatten_tag(out, sdf_joint, "dynamic", 
                     "axis/dynamic/damping" => :damping,
                     "axis/dynamic/friction" => :friction)
-
+        
         flatten_tag(out, sdf_joint, "limit",
                     "axis/limit/lower"    => :lower,
                     "axis/limit/upper"    => :upper,
