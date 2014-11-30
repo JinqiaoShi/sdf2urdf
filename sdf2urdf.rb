@@ -2,21 +2,29 @@
 
 require 'nokogiri'
 
-def convert_pose(parent, builder)
+def convert_pose(parent, builder, options={})
   sdf_pose = parent.>("pose").first
-  return if sdf_pose.nil?
+  return nil if sdf_pose.nil?
 
   origin = builder.origin
-  tokens = sdf_pose.text.split
-  if not tokens.all? {|x| x.to_f == 0 }
-    origin['xyz'] = tokens[0,3].join(" ")
-    origin['rpy'] = tokens[3,3].join(" ")
+  toks = sdf_pose.text.split.map {|x| x.to_f }
+  if not toks.all? {|x| x == 0.0 }
+    if options.has_key? :parent
+      # When a parent pose is specified, sum it to this one
+      parent_toks = options[:parent].text.split.map {|x| x.to_f }
+      toks = toks.each_with_index.map {|a,i| a + parent_toks[i] }
+    end
+
+    origin['xyz'] = toks[0,3].join(" ")
+    origin['rpy'] = toks[3,3].join(" ")
   end
+  return origin
 end
 
 def convert_geometry(parent, builder)
+  new_node = nil
   parent.>("geometry").each do |sdf_geom|
-    builder.geometry {
+    new_node = builder.geometry {
       sdf_geom.element_children.each do |sdf_prim|
         attrs = {}
         sdf_prim.element_children.each do |param|
@@ -27,22 +35,25 @@ def convert_geometry(parent, builder)
       end
     }
   end
+  new_node
 end
 
 def convert_links(parent, out)
   parent.>('link').each do |sdf_link|
+    link_pose = sdf_link.>('pose').first
+
     out.link(:name => sdf_link[:name]) {
 
-      sdf_link.xpath('/visual').each do |sdf_visual|
+      sdf_link.>('visual').each do |sdf_visual|
         out.visual {
-          convert_pose(sdf_visual, out)
+          convert_pose(sdf_visual, out, :parent => link_pose)
           convert_geometry(sdf_visual, out)
         }
       end
 
       if sdf_inertial = sdf_link.>("inertial").first
         out.inertial {
-          convert_pose(sdf_inertial, out)
+          convert_pose(sdf_inertial, out, :parent => link_pose)
           
           if sdf_mass = sdf_inertial.>("mass").first
             out.mass(:value => sdf_mass.text)
@@ -60,7 +71,7 @@ def convert_links(parent, out)
 
       sdf_link.>("collision").each do |sdf_collision|
         out.collision {
-          convert_pose(sdf_collision, out)
+          convert_pose(sdf_collision, out, :parent => link_pose)
           convert_geometry(sdf_collision, out)
         }
       end # do |sdf_visual|
